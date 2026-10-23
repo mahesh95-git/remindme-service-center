@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --color-blue-50: #eef3ff;
+  --color-blue-100: #dce7ff;
+  --color-blue-200: #bfd0ff;
+  --color-blue-400: #6a8dff;
+  --color-blue-600: #365cf5;
+  --color-blue-700: #2947cf;
+  --color-blue-800: #2039a8;
+}
+
+:root {
+  font-family: var(--font-sans);
+  color: #172033;
+  background: #f2f5fc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --brand: #365cf5;
+  --brand-hover: #2947cf;
+  --line: #e5e9f1;
+  --muted: #68758b;
+}
+
+* { box-sizing: border-box; }
+*, *::before, *::after { border-color: #e2e8f0; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(ellipse at 95% 0%, #e8efff 0, transparent 34rem), #f2f5fc; }
+button, a, select { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+::selection { background: #dbe7ff; color: #1d3f91; }
+:focus-visible { outline: 3px solid #93b4ff; outline-offset: 2px; }
+
+input, select, textarea { color: #243149; }
+input::placeholder, textarea::placeholder { color: #9aa5b6; }
+table { border-collapse: collapse; }
+thead th { color: #78849a; font-size: 10px; font-weight: 700; letter-spacing: .07em; }
+tbody tr { transition: background-color .15s ease; }
+tbody tr:hover { background-color: #f8faff; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

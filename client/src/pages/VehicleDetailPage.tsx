@@ -1,0 +1,52 @@
+import { useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, CarFront, Clock3, FileText, Pencil, Trash2, UserRound, Wrench } from 'lucide-react'
+import { Page, Panel, Status } from '../components/ui'
+import { useDeleteVehicleMutation, useSendManualReminderMutation, useVehicleDetailQuery } from '../store/api'
+
+const formatDate = (value: string | null) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString() : '—'
+const titleCase = (value: string) => value.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+
+export default function VehicleDetailPage() {
+  const { id } = useParams()
+  const vehicleId = Number(id)
+  const validId = Number.isInteger(vehicleId) && vehicleId > 0
+  const navigate = useNavigate()
+  const { data: vehicle, error, isLoading } = useVehicleDetailQuery(vehicleId, { skip: !validId })
+  const [deleteVehicle, { isLoading: isDeleting, error: deleteError }] = useDeleteVehicleMutation()
+  const [sendManualReminder, { isLoading: isSendingReminder, error: reminderError }] = useSendManualReminderMutation()
+  const [reminderType, setReminderType] = useState<'SERVICE' | 'INSURANCE' | 'PUC' | 'WARRANTY'>('SERVICE')
+  const [reminderMessage, setReminderMessage] = useState('')
+
+  if (isLoading) return <Page title="Vehicle details" subtitle="Loading vehicle record…"><Panel><p className="text-xs text-slate-400">Loading vehicle details…</p></Panel></Page>
+  if (error || !vehicle) return <Page title="Vehicle not found" subtitle="This vehicle record is unavailable."><Link to="/vehicles" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600"><ArrowLeft size={15} />Back to vehicles</Link></Page>
+
+  return <Page title={vehicle.reg_number} subtitle={`${vehicle.make} ${vehicle.model} · ${vehicle.year}`}>
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><Link to="/vehicles" className="inline-flex items-center gap-2 text-xs font-bold text-blue-700 hover:underline"><ArrowLeft size={15} />Back to vehicles</Link><div className="flex flex-wrap gap-2"><Link to={`/vehicles/${vehicle.id}/edit`} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><Pencil size={14} />Edit vehicle details</Link><button type="button" disabled={isDeleting} onClick={async () => { if (window.confirm(`Delete vehicle ${vehicle.reg_number}? Its bookings, reminders, and service history will also be removed.`)) { try { await deleteVehicle(vehicle.id).unwrap(); navigate('/vehicles') } catch { /* Error is shown below. */ } } }} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-4 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"><Trash2 size={14} />{isDeleting ? 'Deleting…' : 'Delete vehicle'}</button></div></div>
+    {deleteError && <p role="alert" className="mb-4 text-xs text-rose-600">Unable to delete vehicle. Please try again.</p>}
+    {reminderError && <p role="alert" className="mb-4 text-xs text-rose-600">Unable to send reminder. Check the customer email and try again.</p>}
+    {reminderMessage && <p className="mb-4 text-xs text-emerald-600">{reminderMessage}</p>}
+    <Panel className="mb-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-extrabold">Send manual reminder</h2><p className="mt-1 text-xs text-slate-500">Send an email now without waiting for the scheduled cron job.</p></div><div className="flex flex-wrap gap-2"><select value={reminderType} onChange={event => setReminderType(event.target.value as typeof reminderType)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold"><option value="SERVICE">Service</option><option value="INSURANCE">Insurance</option><option value="PUC">PUC</option><option value="WARRANTY">Warranty</option></select><button type="button" disabled={isSendingReminder || !vehicle.customer.email} onClick={async () => { if (!window.confirm(`Send a ${reminderType.toLowerCase()} reminder to ${vehicle.customer.email}?`)) return; setReminderMessage(''); try { const result = await sendManualReminder({ vehicleId: vehicle.id, reminder_type: reminderType }).unwrap(); setReminderMessage(`Reminder sent to ${result.recipient}.`) } catch { setReminderMessage('') } }} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSendingReminder ? 'Sending…' : 'Send reminder'}</button></div></div>{!vehicle.customer.email && <p className="mt-3 text-xs text-amber-700">Add a customer email address before sending a reminder.</p>}</Panel>
+    <div className="grid gap-4 xl:grid-cols-2">
+      <Panel><div className="mb-4 flex items-center gap-2"><CarFront size={18} className="text-blue-600" /><h2 className="text-sm font-extrabold">Vehicle information</h2></div><dl className="grid gap-4 sm:grid-cols-2">{[
+        ['Registration', vehicle.reg_number], ['Make', vehicle.make], ['Model', vehicle.model], ['Year', String(vehicle.year)],
+        ['Purchase date', formatDate(vehicle.purchase_date)], ['Service interval', `${vehicle.service_interval_days} days`],
+        ['Last service', formatDate(vehicle.last_service_date)], ['Next service due', formatDate(vehicle.next_service_date)],
+      ].map(([label, value]) => <Info key={label} label={label} value={value} />)}</dl></Panel>
+
+      <Panel><div className="mb-4 flex items-center gap-2"><UserRound size={18} className="text-blue-600" /><h2 className="text-sm font-extrabold">Customer details</h2></div><dl className="grid gap-4 sm:grid-cols-2"><Info label="Name" value={vehicle.customer.name} /><Info label="Phone" value={vehicle.customer.phone} /><Info label="Email" value={vehicle.customer.email || '—'} /><Info label="Address" value={vehicle.customer.address || '—'} /></dl><div className="mt-4 flex gap-2">{vehicle.customer.phone && <a href={`tel:${vehicle.customer.phone}`} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-blue-700">Call customer</a>}{vehicle.customer.email && <a href={`mailto:${vehicle.customer.email}`} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-blue-700">Email customer</a>}</div></Panel>
+    </div>
+
+    <Panel className="mt-4"><div className="mb-4 flex items-center gap-2"><FileText size={18} className="text-blue-600" /><h2 className="text-sm font-extrabold">Documents and expiry dates</h2></div><dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Info label="Insurance expiry" value={formatDate(vehicle.insurance_expiry)} /><Info label="PUC expiry" value={formatDate(vehicle.puc_expiry)} /><Info label="Warranty expiry" value={formatDate(vehicle.warranty_expiry)} /><Info label="Next service due" value={formatDate(vehicle.next_service_date)} /></dl></Panel>
+
+    <Panel className="mt-4"><div className="mb-4 flex items-center gap-2"><Wrench size={18} className="text-blue-600" /><h2 className="text-sm font-extrabold">Service history</h2></div>{vehicle.service_history.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left"><thead><tr className="border-b text-[10px] uppercase text-slate-400">{['Service date', 'Service', 'Cost', 'Notes'].map(label => <th key={label} className="pb-3 pr-3">{label}</th>)}</tr></thead><tbody>{vehicle.service_history.map(item => <tr key={item.id} className="border-b last:border-0"><td className="py-3 pr-3 text-xs font-semibold">{formatDate(item.service_date)}</td><td className="pr-3 text-xs">{item.service_type}</td><td className="pr-3 text-xs">₹{item.cost.toLocaleString('en-IN')}</td><td className="pr-3 text-xs text-slate-500">{item.notes || '—'}</td></tr>)}</tbody></table></div> : <p className="text-xs text-slate-400">No service history recorded.</p>}</Panel>
+
+    <Panel className="mt-4"><div className="mb-4 flex items-center gap-2"><Clock3 size={18} className="text-blue-600" /><h2 className="text-sm font-extrabold">Bookings</h2></div>{vehicle.bookings.length ? <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left"><thead><tr className="border-b text-[10px] uppercase text-slate-400">{['Date and time', 'Booking', 'Service', 'Status'].map(label => <th key={label} className="pb-3 pr-3">{label}</th>)}</tr></thead><tbody>{vehicle.bookings.map(booking => <tr key={booking.id} className="border-b last:border-0"><td className="py-3 pr-3 text-xs">{formatDate(booking.booking_date)} · {booking.slot_start.slice(0, 5)}</td><td className="pr-3 text-xs font-semibold">{booking.booking_code}</td><td className="pr-3 text-xs">{booking.service_type}</td><td className="pr-3"><Status status={titleCase(booking.status)} /></td></tr>)}</tbody></table></div> : <p className="text-xs text-slate-400">No bookings recorded.</p>}</Panel>
+
+    <Panel className="mt-4"><div className="mb-4 flex items-center gap-2"><Clock3 size={18} className="text-blue-600" /><h2 className="text-sm font-extrabold">Reminders</h2></div>{vehicle.reminders.length ? <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left"><thead><tr className="border-b text-[10px] uppercase text-slate-400">{['Type', 'Due date', 'Lead time', 'Channel', 'Status', 'Sent', 'Created'].map(label => <th key={label} className="pb-3 pr-3">{label}</th>)}</tr></thead><tbody>{vehicle.reminders.map(reminder => <tr key={reminder.id} className="border-b last:border-0"><td className="py-3 pr-3 text-xs font-semibold">{titleCase(reminder.type)}</td><td className="pr-3 text-xs">{formatDate(reminder.due_date)}</td><td className="pr-3 text-xs">{reminder.lead_days} days</td><td className="pr-3 text-xs">{titleCase(reminder.channel)}</td><td className="pr-3"><Status status={titleCase(reminder.status)} /></td><td className="pr-3 text-xs">{formatDate(reminder.sent_at)}</td><td className="pr-3 text-xs">{formatDate(reminder.created_at)}{reminder.error_message && <small className="block max-w-48 text-rose-600">{reminder.error_message}</small>}</td></tr>)}</tbody></table></div> : <p className="text-xs text-slate-400">No reminders recorded.</p>}</Panel>
+  </Page>
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 break-words text-xs font-semibold text-slate-700">{value}</dd></div>
+}
