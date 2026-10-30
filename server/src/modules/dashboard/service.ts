@@ -1,12 +1,110 @@
 import { prisma } from '../../config/prisma.js';
 
+export type DueType = 'INSURANCE' | 'PUC' | 'WARRANTY' | 'SERVICE';
+
+export type DueCustomer = {
+  id: number;
+  due_type: DueType;
+  due_date: string;
+  reg_number: string;
+  make: string;
+  model: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string | null;
+};
+
+function dateRange(from: string, to: string) {
+  return {
+    gte: new Date(`${from}T00:00:00.000Z`),
+    lte: new Date(`${to}T23:59:59.999Z`),
+  };
+}
+
+export async function getDuePeriodService(from: string, to: string): Promise<DueCustomer[]> {
+  const range = dateRange(from, to);
+  const fields: Array<{ type: DueType; field: 'insuranceExpiry' | 'pucExpiry' | 'nextServiceDate' }> = [
+    { type: 'INSURANCE', field: 'insuranceExpiry' },
+    { type: 'PUC', field: 'pucExpiry' },
+    { type: 'SERVICE', field: 'nextServiceDate' },
+  ];
+
+  const groups = await Promise.all(fields.map(async ({ type, field }) => {
+    const vehicles = await prisma.vehicle.findMany({
+      where: { [field]: range },
+      include: { customer: { select: { name: true, phone: true, email: true } } },
+      orderBy: { [field]: 'asc' },
+    });
+
+    return vehicles.map((vehicle) => {
+      const dueDate = vehicle[field];
+      return {
+        id: vehicle.id,
+        due_type: type,
+        due_date: dueDate ? dueDate.toISOString().split('T')[0] : '',
+        reg_number: vehicle.regNumber,
+        make: vehicle.make,
+        model: vehicle.model,
+        customer_name: vehicle.customer.name,
+        customer_phone: vehicle.customer.phone,
+        customer_email: vehicle.customer.email,
+      };
+    });
+  }));
+
+  return groups.flat().sort((a, b) => a.due_date.localeCompare(b.due_date));
+}
+
+export async function getServiceActivityService(from: string, to: string) {
+  const start = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T23:59:59.999Z`);
+  const records = await prisma.serviceHistory.findMany({
+    where: { serviceDate: { gte: start, lte: end } },
+    include: { vehicle: { include: { customer: true } } },
+    orderBy: { serviceDate: 'asc' },
+  });
+
+  return records.map((record) => ({
+    id: record.id,
+    service_type: record.serviceType,
+    service_date: record.serviceDate.toISOString().split('T')[0],
+    cost: Number(record.cost),
+    reg_number: record.vehicle.regNumber,
+    make: record.vehicle.make,
+    model: record.vehicle.model,
+    customer_name: record.vehicle.customer.name,
+  }));
+}
+
+export async function getRevenueActivityService(from: string, to: string) {
+  const start = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T23:59:59.999Z`);
+  const invoices = await prisma.invoice.findMany({
+    where: { paymentStatus: 'PAID', paidAt: { gte: start, lte: end } },
+    select: { total: true, paidAt: true },
+    orderBy: { paidAt: 'asc' },
+  });
+  const daily = new Map<string, number>();
+  for (const invoice of invoices) {
+    if (!invoice.paidAt) continue;
+    const date = invoice.paidAt.toISOString().split('T')[0];
+    daily.set(date, (daily.get(date) ?? 0) + Number(invoice.total));
+  }
+  return {
+    total: invoices.reduce((sum, invoice) => sum + Number(invoice.total), 0),
+    invoice_count: invoices.length,
+    trend: [...daily].map(([date, total]) => ({ date, total })),
+  };
+}
+
 export async function getDashboardSummaryService() {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
   const dayStart = new Date(`${todayStr}T00:00:00.000Z`);
   const dayEnd = new Date(`${todayStr}T23:59:59.999Z`);
 
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const endOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
   const [
     registeredVehicles,
@@ -38,7 +136,7 @@ export async function getDashboardSummaryService() {
     }),
     prisma.serviceHistory.count({
       where: {
-        serviceDate: { gte: startOfMonth },
+        serviceDate: { gte: startOfMonth, lte: endOfMonth },
       },
     }),
     prisma.reminder.count({
@@ -47,11 +145,11 @@ export async function getDashboardSummaryService() {
       },
     }),
     prisma.booking.findMany({
-      where: { bookingDate: { gte: startOfMonth } },
+      where: { bookingDate: { gte: startOfMonth, lte: endOfMonth } },
       select: { bookingDate: true },
     }),
     prisma.serviceHistory.findMany({
-      where: { serviceDate: { gte: startOfMonth } },
+      where: { serviceDate: { gte: startOfMonth, lte: endOfMonth } },
       select: { serviceDate: true },
     }),
   ]);
@@ -62,13 +160,13 @@ export async function getDashboardSummaryService() {
   const revTotal = revenueMonthAgg._sum.total ? parseFloat(revenueMonthAgg._sum.total.toString()) : 0;
   const invCount = revenueMonthAgg._count.id;
   const avgInvoice = invCount > 0 ? Math.round(revTotal / invCount) : 0;
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
   const monthlyBookingTrend = Array.from({ length: daysInMonth }, (_, index) => {
     const day = index + 1;
     return {
       day,
-      bookings: bookingsThisMonth.filter((booking) => booking.bookingDate.getDate() === day).length,
-      services: servicesThisMonth.filter((service) => service.serviceDate.getDate() === day).length,
+      bookings: bookingsThisMonth.filter((booking) => booking.bookingDate.getUTCDate() === day).length,
+      services: servicesThisMonth.filter((service) => service.serviceDate.getUTCDate() === day).length,
     };
   });
 

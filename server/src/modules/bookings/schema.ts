@@ -18,9 +18,19 @@ export const updateBookingStatusSchema = z.object({
   status: z.enum(['CONFIRMED', 'CANCELLED', 'COMPLETED']),
 });
 
+export const completeBookingSchema = z.object({
+  invoice_photo_url: z.string().url().max(2048),
+  next_service_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  total_bill: z.number().finite().nonnegative(),
+});
+
 export const rescheduleBookingSchema = z.object({
   booking_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
   slot_start: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Slot must be in HH:MM format'),
+});
+
+export const assignBookingStaffSchema = z.object({
+  staff_id: z.number().int().positive().nullable(),
 });
 
 export const bookingSlotsQuerySchema = z.object({

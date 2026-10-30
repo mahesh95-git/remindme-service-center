@@ -4,14 +4,14 @@ export const createUserSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(4),
-  role: z.enum(['ADMIN', 'RECEPTIONIST']).default('RECEPTIONIST'),
+  role: z.enum(['ADMIN', 'RECEPTIONIST', 'SERVICE', 'DOCUMENTS', 'PUC']).default('RECEPTIONIST'),
 });
 
 export const updateUserSchema = z.object({
   name: z.string().min(2).optional(),
   email: z.string().email().optional(),
   password: z.string().min(4).optional(),
-  role: z.enum(['ADMIN', 'RECEPTIONIST']).optional(),
+  role: z.enum(['ADMIN', 'RECEPTIONIST', 'SERVICE', 'DOCUMENTS', 'PUC']).optional(),
   isActive: z.boolean().optional(),
 });
 

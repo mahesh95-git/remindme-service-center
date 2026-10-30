@@ -39,7 +39,7 @@ export default function EditVehiclePage() {
       reg_number: vehicle.reg_number,
       make: vehicle.make,
       model: vehicle.model,
-      year: String(vehicle.year),
+      year: String(vehicle.year ?? ''),
       purchase_date: vehicle.purchase_date ?? '',
       last_service_date: vehicle.last_service_date ?? '',
       next_service_date: vehicle.next_service_date ?? '',

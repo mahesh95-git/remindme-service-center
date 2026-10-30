@@ -2,43 +2,60 @@
 
 @theme {
   --font-sans: "Inter", "Segoe UI", sans-serif;
-  --color-blue-50: #eef3ff;
-  --color-blue-100: #dce7ff;
-  --color-blue-200: #bfd0ff;
-  --color-blue-400: #6a8dff;
-  --color-blue-600: #365cf5;
-  --color-blue-700: #2947cf;
-  --color-blue-800: #2039a8;
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-400: #60a5fa;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
 }
 
 :root {
   font-family: var(--font-sans);
-  color: #172033;
-  background: #f2f5fc;
+  color: #262b33;
+  background: #f7f7f8;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --brand: #365cf5;
-  --brand-hover: #2947cf;
-  --line: #e5e9f1;
-  --muted: #68758b;
+  --brand: #f07836;
+  --brand-hover: #db6427;
+  --ink: #262b33;
+  --surface: #ffffff;
+  --canvas: #f7f7f8;
+  --line: #e1e3e6;
+  --muted: #626873;
 }
 
 * { box-sizing: border-box; }
-*, *::before, *::after { border-color: #e2e8f0; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(ellipse at 95% 0%, #e8efff 0, transparent 34rem), #f2f5fc; }
+*, *::before, *::after { border-color: var(--line); }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--canvas); }
 button, a, select { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
-::selection { background: #dbe7ff; color: #1d3f91; }
-:focus-visible { outline: 3px solid #93b4ff; outline-offset: 2px; }
+::selection { background: #fbd3bc; color: #262b33; }
+:focus-visible { outline: 3px solid #f07836; outline-offset: 2px; }
 
-input, select, textarea { color: #243149; }
-input::placeholder, textarea::placeholder { color: #9aa5b6; }
+input, select, textarea { color: #262b33; }
+input::placeholder, textarea::placeholder { color: #626873; }
 table { border-collapse: collapse; }
-thead th { color: #78849a; font-size: 10px; font-weight: 700; letter-spacing: .07em; }
+thead th { color: #626873; font-size: 10px; font-weight: 700; letter-spacing: .07em; }
 tbody tr { transition: background-color .15s ease; }
-tbody tr:hover { background-color: #f8faff; }
+tbody tr:hover { background-color: #fff8f3; }
+
+.app-surface { border: 1px solid var(--line); background: var(--surface); box-shadow: 0 4px 18px rgba(38, 43, 51, .045); }
+.app-primary { background: var(--ink); color: white; }
+.app-primary:hover { background: #171b21; }
+.app-muted { color: var(--muted); }
+
+/* Keep blue utility classes for informational states; primary actions use orange. */
+:is(button, a)[class~="bg-blue-600"],
+:is(button, a)[class~="bg-blue-700"] { background-color: #f07836; color: #262b33; }
+:is(button, a)[class~="bg-blue-600"]:hover,
+:is(button, a)[class~="bg-blue-700"]:hover { background-color: #db6427; color: #262b33; }
+:is(button, a)[class~="bg-blue-800"] { background-color: #c9551e; color: #262b33; }
+:is(button, a)[class~="bg-blue-600"]:disabled,
+:is(button, a)[class~="bg-blue-700"]:disabled { background-color: #e5e7eb; color: #6b7280; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

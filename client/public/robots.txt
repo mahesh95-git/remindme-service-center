@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /confirmation
+Disallow: /bookings
+Disallow: /customers
+Disallow: /vehicles
+Disallow: /reminders
+Disallow: /staff
+Disallow: /reports
+Disallow: /settings
+
+Sitemap: http://localhost:5173/sitemap.xml

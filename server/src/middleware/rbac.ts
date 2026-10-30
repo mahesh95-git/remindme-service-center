@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { sendError } from '../utils/response.js';
+import type { UserRole } from './auth.js';
 
-export type UserRole = 'ADMIN' | 'RECEPTIONIST';
+export const OPERATIONAL_ROLES: UserRole[] = ['RECEPTIONIST', 'SERVICE', 'DOCUMENTS', 'PUC'];
 
 export function requireRole(allowedRoles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction) => {

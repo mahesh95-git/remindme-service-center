@@ -4,9 +4,21 @@ import { generateBookingCode } from '../../utils/bookingCode.js';
 import { normalizeRegNumber } from '../vehicles/service.js';
 import { CreateBookingInput } from './schema.js';
 import { BookingStatus } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { EmailProvider } from '../../notifications/email.js';
-import { NotificationPayload } from '../../notifications/adapter.js';
 import { ENV } from '../../config/env.js';
+
+export function createInvoiceUploadSignature() {
+  if (!ENV.CLOUDINARY_CLOUD_NAME || !ENV.CLOUDINARY_API_KEY || !ENV.CLOUDINARY_API_SECRET) {
+    throw new AppError('Cloudinary signed upload is not configured on the server', 503);
+  }
+  const timestamp = Math.floor(Date.now() / 1000);
+  const folder = 'service-invoices';
+  const signature = createHash('sha1')
+    .update(`folder=${folder}&timestamp=${timestamp}${ENV.CLOUDINARY_API_SECRET}`)
+    .digest('hex');
+  return { cloud_name: ENV.CLOUDINARY_CLOUD_NAME, api_key: ENV.CLOUDINARY_API_KEY, timestamp, folder, signature };
+}
 
 export async function getSlotConfig() {
   const config = await prisma.slotConfig.findFirst();
@@ -37,13 +49,21 @@ function minutesToTime(m: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+function parseDateOnly(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new AppError('A valid booking date is required', 400);
+  }
+  return date;
+}
+
 export async function getAvailableSlotsService(dateStr: string, excludeBookingId?: number) {
+  const targetDate = parseDateOnly(dateStr);
   const config = await getSlotConfig();
   const startMin = timeToMinutes(config.working_hours_start);
   const endMin = timeToMinutes(config.working_hours_end);
   const duration = config.slot_duration_minutes;
 
-  const targetDate = new Date(`${dateStr}T00:00:00.000Z`);
   const dayEnd = new Date(`${dateStr}T23:59:59.999Z`);
 
   const bookings = await prisma.booking.findMany({
@@ -213,6 +233,7 @@ export async function listBookingsService(filters?: {
       vehicle: true,
       customer: true,
       invoice: true,
+      assignedStaff: { select: { id: true, name: true, role: true } },
     },
     orderBy: [{ bookingDate: 'desc' }, { slotStart: 'asc' }],
   });
@@ -222,6 +243,9 @@ export async function listBookingsService(filters?: {
     booking_code: b.bookingCode,
     vehicle_id: b.vehicleId,
     customer_id: b.customerId,
+    assigned_staff_id: b.assignedStaffId,
+    assigned_staff_name: b.assignedStaff?.name || null,
+    assigned_staff_role: b.assignedStaff?.role || null,
     customer_name: b.customer.name,
     customer_phone: b.customer.phone,
     customer_email: b.customer.email,
@@ -239,15 +263,43 @@ export async function listBookingsService(filters?: {
     status: b.status,
     invoice_id: b.invoice?.id || null,
     invoice_total: b.invoice ? parseFloat(b.invoice.total.toString()) : null,
+    invoice_amount: b.invoice ? parseFloat(b.invoice.amount.toString()) : null,
+    invoice_tax: b.invoice ? parseFloat(b.invoice.tax.toString()) : null,
     invoice_status: b.invoice?.paymentStatus || null,
+    invoice_method: b.invoice?.paymentMethod || null,
     created_at: b.createdAt,
     updated_at: b.updatedAt,
   }));
 }
 
+export async function assignBookingStaffService(id: number, staffId: number | null) {
+  const booking = await prisma.booking.findUnique({ where: { id } });
+  if (!booking) throw new AppError('Appointment not found', 404);
+
+  if (staffId !== null) {
+    const staff = await prisma.user.findUnique({ where: { id: staffId }, select: { id: true, isActive: true } });
+    if (!staff || !staff.isActive) throw new AppError('Choose an active staff account', 400);
+  }
+
+  const updated = await prisma.booking.update({
+    where: { id },
+    data: { assignedStaffId: staffId },
+    include: { assignedStaff: { select: { id: true, name: true, role: true } } },
+  });
+  return {
+    id: updated.id,
+    assigned_staff_id: updated.assignedStaffId,
+    assigned_staff_name: updated.assignedStaff?.name || null,
+    assigned_staff_role: updated.assignedStaff?.role || null,
+  };
+}
+
 export async function updateBookingStatusService(
   id: number,
-  newStatus: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
+  newStatus: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED',
+  invoicePhotoUrl?: string,
+  nextServiceDate?: string,
+  totalBill?: number,
 ) {
   const booking = await prisma.booking.findUnique({
     where: { id },
@@ -293,7 +345,7 @@ export async function updateBookingStatusService(
 
     const updatedBooking = await tx.booking.update({
       where: { id },
-      data: { status: newStatus },
+      data: { status: newStatus, ...(invoicePhotoUrl ? { invoicePhotoUrl } : {}) },
       include: { vehicle: true },
     });
 
@@ -302,10 +354,17 @@ export async function updateBookingStatusService(
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
       const interval = booking.vehicle.serviceIntervalDays || 180;
-      const nextDate = new Date();
-      nextDate.setDate(nextDate.getDate() + interval);
+      const nextDate = nextServiceDate ? parseDateOnly(nextServiceDate) : new Date();
+      if (!nextServiceDate) nextDate.setDate(nextDate.getDate() + interval);
 
-      const cost = booking.invoice ? parseFloat(booking.invoice.total.toString()) : 0.0;
+      if (totalBill !== undefined) {
+        await tx.invoice.upsert({
+          where: { bookingId: id },
+          create: { bookingId: id, amount: totalBill, tax: 0, total: totalBill, paymentStatus: 'PAID', paidAt: new Date() },
+          update: { amount: totalBill, tax: 0, total: totalBill, paymentStatus: 'PAID', paidAt: new Date() },
+        });
+      }
+      const cost = totalBill ?? (booking.invoice ? parseFloat(booking.invoice.total.toString()) : 0.0);
 
       await tx.serviceHistory.create({
         data: {
@@ -334,23 +393,36 @@ export async function updateBookingStatusService(
     if (!booking.customer.email) {
       completionEmail = { sent: false, error: 'Customer does not have an email address' };
     } else {
-      const emailPayload: NotificationPayload = {
+      const result = await new EmailProvider().sendServiceCompletion({
         to: booking.customer.email,
         recipientName: booking.customer.name,
-        subject: `RemindMe Service Completed: ${booking.serviceType}`,
-        message: `Your ${booking.serviceType} for ${booking.vehicle.make} ${booking.vehicle.model} (${booking.vehicle.regNumber}) has been completed successfully. Thank you for choosing RemindMe.`,
         serviceType: booking.serviceType,
+        vehicleName: `${booking.vehicle.make} ${booking.vehicle.model}`,
         vehicleReg: booking.vehicle.regNumber,
-        reminderType: 'SERVICE',
-        dueDate: new Date().toISOString().split('T')[0],
-        bookingUrl: `${ENV.CLIENT_URL}/book?reg=${encodeURIComponent(booking.vehicle.regNumber)}`,
-      };
-      const result = await new EmailProvider().send(emailPayload);
+        invoicePhotoUrl: invoicePhotoUrl || null,
+        invoiceTotal: totalBill !== undefined ? totalBill.toFixed(2) : booking.invoice ? booking.invoice.total.toString() : null,
+      });
       completionEmail = result.success ? { sent: true } : { sent: false, error: result.error };
     }
   }
 
   return { ...updated, completionEmail };
+}
+
+export async function completeBookingWithInvoiceService(id: number, invoicePhotoUrl: string, nextServiceDate: string | undefined, totalBill: number) {
+  let parsedUrl: URL;
+  try { parsedUrl = new URL(invoicePhotoUrl); } catch { throw new AppError('Invoice photo URL is invalid', 400); }
+  if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'res.cloudinary.com') {
+    throw new AppError('Invoice photo must be stored in Cloudinary', 400);
+  }
+  if (nextServiceDate) {
+    const nextDate = parseDateOnly(nextServiceDate);
+    if (nextDate < parseDateOnly(new Date().toISOString().slice(0, 10))) {
+      throw new AppError('Next service date cannot be in the past', 400);
+    }
+  }
+  const result = await updateBookingStatusService(id, 'COMPLETED', parsedUrl.toString(), nextServiceDate, totalBill);
+  return { id: result.id, status: result.status, invoice_photo_url: parsedUrl.toString(), total_bill: totalBill, email_sent: result.completionEmail?.sent ?? false, email_error: result.completionEmail?.error };
 }
 
 export async function rescheduleBookingService(id: number, bookingDateStr: string, slotStartInput: string) {

@@ -62,4 +62,57 @@ export class EmailProvider implements NotificationProvider {
       return { success: false, error: message };
     }
   }
+
+  async sendServiceCompletion(input: {
+    to: string; recipientName: string; serviceType: string; vehicleName: string;
+    vehicleReg: string; invoicePhotoUrl: string | null; invoiceTotal: string | null;
+  }): Promise<NotificationResult> {
+    if (!this.transporter) return { success: false, error: 'SMTP is not configured.' };
+    const invoice = input.invoicePhotoUrl
+      ? `<p><a href="${input.invoicePhotoUrl}">View your invoice photo</a>${input.invoiceTotal ? ` · Total: ₹${input.invoiceTotal}` : ''}</p>`
+      : '';
+    try {
+      const result = await this.transporter.sendMail({
+        from: ENV.SMTP_FROM,
+        to: input.to,
+        subject: `Service completed: ${input.vehicleReg}`,
+        html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;color:#1e293b"><h2>Your vehicle service is complete</h2><p>Hello ${input.recipientName},</p><p>${input.serviceType} for your ${input.vehicleName} (${input.vehicleReg}) has been completed.</p>${invoice}<p>Thank you for choosing our service center.</p></div>`,
+      });
+      logger.info(`[EmailProvider] Service completion email accepted for ${input.to}. Message ID: ${result.messageId}.`);
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown email provider error';
+      logger.error(`[EmailProvider] Failed to send service completion email to ${input.to}`, err);
+      return { success: false, error: message };
+    }
+  }
+
+  async sendPasswordReset(to: string, recipientName: string, resetUrl: string): Promise<NotificationResult> {
+    try {
+      if (!this.transporter) {
+        const error = 'SMTP is not configured.';
+        logger.error(`[EmailProvider] Cannot send password reset email to ${to}: ${error}`);
+        return { success: false, error };
+      }
+
+      const result = await this.transporter.sendMail({
+        from: ENV.SMTP_FROM,
+        to,
+        subject: 'Reset your RemindMe password',
+        html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #2563eb;">Reset your RemindMe password</h2>
+          <p>Hi ${recipientName},</p>
+          <p>We received a request to reset your password. This link expires in one hour.</p>
+          <p><a href="${resetUrl}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 20px; text-decoration: none; border-radius: 6px;">Reset password</a></p>
+          <p style="font-size: 12px; color: #64748b;">If you did not request this, you can safely ignore this email.</p>
+        </div>`,
+      });
+      logger.info(`[EmailProvider] Password reset email accepted for ${to}. Message ID: ${result.messageId}.`);
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown email provider error';
+      logger.error(`[EmailProvider] Failed to send password reset email to ${to}`, err);
+      return { success: false, error: message };
+    }
+  }
 }

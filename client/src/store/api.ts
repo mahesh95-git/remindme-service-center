@@ -35,16 +35,32 @@ const baseQuery: typeof rawBaseQuery = async (args, api, extraOptions) => {
 
 export type Booking = {
   id: number
+  vehicle_id: number
   booking_code: string
   customer_name: string
   customer_phone: string
+  customer_email?: string | null
+  year?: number | null
   reg_number: string
+  vehicle_name?: string
   make: string
   model: string
   service_type: string
   booking_date: string
   slot_start: string
+  slot_end?: string
+  contact_name?: string
+  contact_phone?: string
   status: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
+  invoice_id: number | null
+  invoice_total: number | null
+  invoice_status: 'PAID' | 'UNPAID' | null
+  invoice_amount?: number | null
+  invoice_tax?: number | null
+  invoice_method?: string | null
+  assigned_staff_id?: number | null
+  assigned_staff_name?: string | null
+  assigned_staff_role?: string | null
 }
 
 export type DashboardSummary = {
@@ -59,6 +75,29 @@ export type DashboardSummary = {
   monthlyBookingTrend: { day: number; bookings: number; services: number }[]
 }
 
+export type ServiceActivity = {
+  id: number
+  service_type: string
+  service_date: string
+  cost: number
+  reg_number: string
+  make: string
+  model: string
+  customer_name: string
+}
+export type RevenueActivity = { total: number; invoice_count: number; trend: { date: string; total: number }[] }
+export type DueCustomer = {
+  id: number
+  due_type: 'INSURANCE' | 'PUC' | 'WARRANTY' | 'SERVICE'
+  due_date: string
+  reg_number: string
+  make: string
+  model: string
+  customer_name: string
+  customer_phone: string
+  customer_email: string | null
+}
+
 export type RecordRow = Record<string, string | number | boolean | null | undefined>
 export type Settings = {
   working_hours_start: string
@@ -71,7 +110,7 @@ export type Vehicle = {
   reg_number: string
   make: string
   model: string
-  year: number
+  year: number | null
   last_service_date: string | null
   next_service_date: string | null
   insurance_expiry: string | null
@@ -86,7 +125,7 @@ export type VehicleDetail = {
   reg_number: string
   make: string
   model: string
-  year: number
+  year: number | null
   purchase_date: string | null
   insurance_expiry: string | null
   puc_expiry: string | null
@@ -98,8 +137,35 @@ export type VehicleDetail = {
   updated_at: string
   customer: { id: number; name: string; phone: string; email: string | null; address: string | null }
   service_history: { id: number; service_type: string; service_date: string | null; cost: number; notes: string | null; created_at: string }[]
-  bookings: { id: number; booking_code: string; booking_date: string | null; slot_start: string; slot_end: string; service_type: string; status: Booking['status'] }[]
+  bookings: { id: number; booking_code: string; booking_date: string | null; slot_start: string; slot_end: string; service_type: string; status: Booking['status']; invoice_photo_url: string | null; invoice: { id: number; total: number; payment_status: 'PAID' | 'UNPAID' } | null }[]
   reminders: { id: number; type: string; due_date: string | null; lead_days: number; channel: string; status: string; sent_at: string | null; error_message: string | null; created_at: string }[]
+}
+export type CustomerDetail = {
+  id: number
+  name: string
+  phone: string
+  email: string | null
+  address: string | null
+  createdAt: string
+  vehicles_count: number
+  vehicles: Array<{
+    id: number
+    regNumber: string
+    make: string
+    model: string
+    year: number | null
+    insuranceExpiry: string | null
+    pucExpiry: string | null
+    warrantyExpiry: string | null
+    nextServiceDate: string | null
+    serviceHistory: Array<{
+      id: number
+      serviceDate: string
+      serviceType: string
+      cost: number
+      notes: string | null
+    }>
+  }>
 }
 export type Slot = { slot_start: string; slot_end: string; is_available: boolean; booked_count: number; max_capacity: number }
 export type Confirmation = {
@@ -121,6 +187,12 @@ export const api = createApi({
     login: builder.mutation<{ token: string; user: { role: string } }, { email: string; password: string }>({
       query: body => ({ url: '/auth/login', method: 'POST', body }),
     }),
+    forgotPassword: builder.mutation<{ message: string }, { email: string }>({
+      query: body => ({ url: '/auth/forgot-password', method: 'POST', body }),
+    }),
+    resetPassword: builder.mutation<null, { token: string; password: string }>({
+      query: body => ({ url: '/auth/reset-password', method: 'POST', body }),
+    }),
     bookings: builder.query<Booking[], { date?: string; status?: Booking['status']; search?: string } | void>({
       query: filters => {
         const params = new URLSearchParams()
@@ -136,6 +208,17 @@ export const api = createApi({
       query: ({ bookingId, status }) => ({ url: `/bookings/${bookingId}/status`, method: 'PATCH', body: { status } }),
       invalidatesTags: ['Bookings'],
     }),
+    completeBooking: builder.mutation<{ id: number; status: 'COMPLETED'; invoice_photo_url: string; total_bill: number; email_sent: boolean; email_error?: string }, { bookingId: number; invoicePhotoUrl: string; nextServiceDate: string; totalBill: number }>({
+      query: ({ bookingId, invoicePhotoUrl, nextServiceDate, totalBill }) => ({ url: `/bookings/${bookingId}/complete`, method: 'PATCH', body: { invoice_photo_url: invoicePhotoUrl, next_service_date: nextServiceDate, total_bill: totalBill } }),
+      invalidatesTags: ['Bookings', 'Vehicles', 'Dashboard'],
+    }),
+    invoiceUploadSignature: builder.mutation<{ cloud_name: string; api_key: string; timestamp: number; folder: string; signature: string }, void>({
+      query: () => ({ url: '/bookings/invoice-upload-signature', method: 'POST', body: {} }),
+    }),
+    assignBookingStaff: builder.mutation<{ id: number; assigned_staff_id: number | null; assigned_staff_name: string | null; assigned_staff_role: string | null }, { bookingId: number; staffId: number | null }>({
+      query: ({ bookingId, staffId }) => ({ url: `/bookings/${bookingId}/assignee`, method: 'PATCH', body: { staff_id: staffId } }),
+      invalidatesTags: ['Bookings'],
+    }),
     rescheduleSlots: builder.query<{ date: string; slots: Slot[] }, { bookingId: number; date: string }>({
       query: ({ bookingId, date }) => `/bookings/${bookingId}/slots?date=${encodeURIComponent(date)}`,
     }),
@@ -147,11 +230,35 @@ export const api = createApi({
       query: body => ({ url: '/bookings', method: 'POST', body }),
       invalidatesTags: ['Bookings'],
     }),
+    createInvoice: builder.mutation<RecordRow, { booking_id: number; amount: number; tax: number; total: number; payment_status: 'PAID' | 'UNPAID'; payment_method: 'CASH' | 'CARD' | 'UPI' | 'BANK_TRANSFER' | 'OTHER' | null }>({
+      query: body => ({ url: '/invoices', method: 'POST', body }),
+      invalidatesTags: ['Bookings', 'Dashboard', 'Vehicles'],
+    }),
     dashboardSummary: builder.query<DashboardSummary, void>({ query: () => '/dashboard/summary', providesTags: ['Dashboard'] }),
+    serviceActivity: builder.query<ServiceActivity[], { from: string; to: string }>({
+      query: ({ from, to }) => `/dashboard/service-activity?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      providesTags: ['Dashboard'],
+    }),
+    revenueActivity: builder.query<RevenueActivity, { from: string; to: string }>({
+      query: ({ from, to }) => `/dashboard/revenue-activity?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      providesTags: ['Dashboard'],
+    }),
+    duePeriod: builder.query<DueCustomer[], { from: string; to: string }>({
+      query: ({ from, to }) => `/dashboard/due-period?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      providesTags: ['Dashboard'],
+    }),
     reminders: builder.query<{ items: RecordRow[] }, void>({ query: () => '/reminders', providesTags: ['Reminders'] }),
+    sendCustomReminder: builder.mutation<{ id: number; status: string; recipient: string; channel: string }, { vehicleId: number; reminderType: 'SERVICE' | 'INSURANCE' | 'PUC' | 'WARRANTY'; channel: 'EMAIL' | 'SMS' | 'WHATSAPP'; message: string }>({
+      query: body => ({ url: '/reminders/manual', method: 'POST', body }),
+      invalidatesTags: ['Reminders', 'Vehicles'],
+    }),
     runReminders: builder.mutation<{ totalChecked: number; totalCreated: number; totalSent: number; totalFailed: number; totalSkipped: number }, void>({
       query: () => ({ url: '/reminders/run', method: 'POST', body: {} }),
       invalidatesTags: ['Reminders'],
+    }),
+    sendDuePeriodReminders: builder.mutation<{ total: number; sent: number; skipped: number; failed: number }, { from: string; to: string }>({
+      query: body => ({ url: '/reminders/due-period', method: 'POST', body }),
+      invalidatesTags: ['Reminders', 'Dashboard'],
     }),
     settings: builder.query<{ slotConfig: Settings }, void>({ query: () => '/settings', providesTags: ['Settings'] }),
     updateSettings: builder.mutation<Settings, Settings>({
@@ -162,6 +269,10 @@ export const api = createApi({
       query: ({ path, search }) => `${path}${search ? `?search=${encodeURIComponent(search)}` : ''}`,
       providesTags: (_result, _error, arg) => arg.path === '/users' ? ['Users'] : arg.path === '/customers' ? ['Customers'] : arg.path === '/vehicles' ? ['Vehicles'] : [],
     }),
+    customerDetail: builder.query<CustomerDetail, number>({
+      query: id => `/customers/${id}`,
+      providesTags: ['Customers'],
+    }),
     deleteCustomer: builder.mutation<{ id: number }, number>({
       query: id => ({ url: `/customers/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Customers'],
@@ -169,6 +280,10 @@ export const api = createApi({
     updateCustomer: builder.mutation<RecordRow, { id: number; body: { name?: string; phone?: string; email?: string; address?: string } }>({
       query: ({ id, body }) => ({ url: `/customers/${id}`, method: 'PUT', body }),
       invalidatesTags: ['Customers'],
+    }),
+    createVehicle: builder.mutation<RecordRow, { customer_id: number; reg_number: string; make: string; model: string; year?: number; purchase_date?: string; insurance_expiry?: string; puc_expiry?: string; warranty_expiry?: string; service_interval_days?: number; last_service_date?: string; next_service_date?: string }>({
+      query: body => ({ url: '/vehicles', method: 'POST', body }),
+      invalidatesTags: ['Vehicles', 'Customers'],
     }),
     deleteVehicle: builder.mutation<{ id: number }, number>({
       query: id => ({ url: `/vehicles/${id}`, method: 'DELETE' }),
@@ -178,12 +293,16 @@ export const api = createApi({
       query: ({ vehicleId, reminder_type }) => ({ url: `/vehicles/${vehicleId}/reminder`, method: 'POST', body: { reminder_type } }),
       invalidatesTags: ['Reminders', 'Vehicles'],
     }),
-    registerVehicleWithCustomer: builder.mutation<RecordRow, { customer: { name: string; phone: string; email?: string; address?: string }; vehicle: { reg_number: string; make: string; model: string; year: number; purchase_date?: string; insurance_expiry?: string; puc_expiry?: string; warranty_expiry?: string; service_interval_days: number; last_service_date?: string; next_service_date?: string } }>({
+    registerVehicleWithCustomer: builder.mutation<RecordRow, { customer: { name: string; phone: string; email?: string; address?: string }; vehicle: { reg_number: string; make: string; model: string; year?: number; purchase_date?: string; insurance_expiry?: string; puc_expiry?: string; warranty_expiry?: string; service_interval_days: number; last_service_date?: string; next_service_date?: string } }>({
       query: body => ({ url: '/vehicles/register', method: 'POST', body }),
       invalidatesTags: ['Customers', 'Vehicles'],
     }),
     createStaff: builder.mutation<RecordRow, { name: string; email: string; password: string; role: 'ADMIN' | 'RECEPTIONIST' }>({
       query: body => ({ url: '/users', method: 'POST', body }),
+      invalidatesTags: ['Users', 'Dashboard'],
+    }),
+    updateStaff: builder.mutation<RecordRow, { id: number; body: { isActive: boolean } }>({
+      query: ({ id, body }) => ({ url: `/users/${id}`, method: 'PUT', body }),
       invalidatesTags: ['Users', 'Dashboard'],
     }),
     deleteStaff: builder.mutation<{ id: number }, number>({
@@ -203,27 +322,42 @@ export const api = createApi({
 
 export const {
   useLoginMutation,
+  useForgotPasswordMutation,
+  useResetPasswordMutation,
   useBookingsQuery,
   useUpdateBookingStatusMutation,
+  useCompleteBookingMutation,
+  useInvoiceUploadSignatureMutation,
+  useAssignBookingStaffMutation,
   useRescheduleSlotsQuery,
   useRescheduleBookingMutation,
   useCreateBookingMutation,
+  useCreateInvoiceMutation,
   useDashboardSummaryQuery,
+  useServiceActivityQuery,
+  useRevenueActivityQuery,
+  useDuePeriodQuery,
   useRemindersQuery,
+  useSendCustomReminderMutation,
   useRunRemindersMutation,
+  useSendDuePeriodRemindersMutation,
   useSettingsQuery,
   useUpdateSettingsMutation,
   useRecordsQuery,
+  useCustomerDetailQuery,
   useDeleteCustomerMutation,
   useUpdateCustomerMutation,
+  useCreateVehicleMutation,
   useDeleteVehicleMutation,
   useSendManualReminderMutation,
   useCreateStaffMutation,
+  useUpdateStaffMutation,
   useDeleteStaffMutation,
   useRegisterVehicleWithCustomerMutation,
   useServicesQuery,
   useSlotsQuery,
   useLazyVehicleLookupQuery,
   useVehicleDetailQuery,
+  useLazyVehicleDetailQuery,
   useUpdateVehicleMutation,
 } = api

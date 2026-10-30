@@ -10,6 +10,9 @@ generator client {
 enum Role {
   ADMIN
   RECEPTIONIST
+  SERVICE
+  DOCUMENTS
+  PUC
 }
 
 enum ReminderType {
@@ -43,6 +46,14 @@ enum PaymentStatus {
   PAID
 }
 
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  BANK_TRANSFER
+  OTHER
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   name         String
@@ -50,8 +61,11 @@ model User {
   passwordHash String   @map("password_hash")
   role         Role     @default(RECEPTIONIST)
   isActive     Boolean  @default(true) @map("is_active")
+  resetTokenHash String? @map("reset_token_hash")
+  resetTokenExpiresAt DateTime? @map("reset_token_expires_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
+  assignedBookings Booking[] @relation("BookingAssignedStaff")
 
   @@map("users")
 }
@@ -77,7 +91,7 @@ model Vehicle {
   regNumber           String           @unique @map("reg_number")
   make                String
   model               String
-  year                Int
+  year                Int?
   purchaseDate        DateTime?        @map("purchase_date")
   insuranceExpiry     DateTime?        @map("insurance_expiry")
   pucExpiry           DateTime?        @map("puc_expiry")
@@ -135,6 +149,8 @@ model Booking {
   vehicle      Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   customerId   Int           @map("customer_id")
   customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedStaffId Int?       @map("assigned_staff_id")
+  assignedStaff User?        @relation("BookingAssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
   bookingDate  DateTime      @map("booking_date")
   slotStart    String        @map("slot_start")
   slotEnd      String        @map("slot_end")
@@ -143,6 +159,7 @@ model Booking {
   serviceType  String        @default("General service") @map("service_type")
   status       BookingStatus @default(CONFIRMED)
   bookingCode  String        @unique @map("booking_code")
+  invoicePhotoUrl String?    @map("invoice_photo_url")
   invoice      Invoice?
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
@@ -168,6 +185,7 @@ model Invoice {
   tax           Decimal       @default(0.00) @db.Decimal(10, 2)
   total         Decimal       @default(0.00) @db.Decimal(10, 2)
   paymentStatus PaymentStatus @default(UNPAID) @map("payment_status")
+  paymentMethod PaymentMethod? @map("payment_method")
   paidAt        DateTime?     @map("paid_at")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")

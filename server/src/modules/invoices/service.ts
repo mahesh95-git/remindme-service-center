@@ -65,6 +65,7 @@ export async function createInvoiceService(input: CreateInvoiceInput) {
       tax,
       total,
       paymentStatus: input.payment_status,
+      paymentMethod: input.payment_method ?? null,
       paidAt,
     },
     include: {

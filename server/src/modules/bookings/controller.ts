@@ -5,14 +5,35 @@ import {
   listBookingsService,
   updateBookingStatusService,
   rescheduleBookingService,
+  assignBookingStaffService,
+  completeBookingWithInvoiceService,
 } from './service.js';
 import { sendSuccess } from '../../utils/response.js';
+import { createInvoiceUploadSignature } from './service.js';
 
 export async function getAvailableSlots(req: Request, res: Response, next: NextFunction) {
   try {
     const date = req.query.date as string;
     const result = await getAvailableSlotsService(date);
     return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function completeBooking(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const result = await completeBookingWithInvoiceService(id, req.body.invoice_photo_url, req.body.next_service_date, req.body.total_bill);
+    return sendSuccess(res, result, 'Service completed');
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getInvoiceUploadSignature(_req: Request, res: Response, next: NextFunction) {
+  try {
+    return sendSuccess(res, createInvoiceUploadSignature());
   } catch (err) {
     next(err);
   }
@@ -69,6 +90,16 @@ export async function rescheduleBooking(req: Request, res: Response, next: NextF
     const { booking_date, slot_start } = req.body;
     const booking = await rescheduleBookingService(id, booking_date, slot_start);
     return sendSuccess(res, booking, 'Booking rescheduled successfully');
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function assignBookingStaff(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const result = await assignBookingStaffService(id, req.body.staff_id);
+    return sendSuccess(res, result, 'Appointment staff assignment updated');
   } catch (err) {
     next(err);
   }

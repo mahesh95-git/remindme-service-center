@@ -1,10 +1,16 @@
 import { prisma } from '../../config/prisma.js';
 import { ENV } from '../../config/env.js';
 import { EmailProvider } from '../../notifications/email.js';
+import { SmsProvider } from '../../notifications/sms.js';
+import { WhatsAppProvider } from '../../notifications/whatsapp.js';
 import { NotificationPayload } from '../../notifications/adapter.js';
 import { ReminderChannel, ReminderType } from '@prisma/client';
+import { AppError } from '../../middleware/errorHandler.js';
+import { getDuePeriodService } from '../dashboard/service.js';
 
 const emailProvider = new EmailProvider();
+const smsProvider = new SmsProvider();
+const whatsappProvider = new WhatsAppProvider();
 
 export async function listRemindersService(filters: {
   type?: string;
@@ -186,4 +192,135 @@ export async function runReminderEngine(options?: {
   }
 
   return results;
+}
+
+export async function sendManualReminderService(input: {
+  vehicleId: number;
+  reminderType: ReminderType;
+  channel: 'SMS' | 'EMAIL' | 'WHATSAPP';
+  message: string;
+}) {
+  const vehicle = await prisma.vehicle.findUnique({
+    where: { id: input.vehicleId },
+    include: { customer: true },
+  });
+  if (!vehicle) throw new AppError('Vehicle not found', 404);
+
+  const recipient = input.channel === 'EMAIL' ? vehicle.customer.email : vehicle.customer.phone;
+  if (!recipient) {
+    throw new AppError(
+      input.channel === 'EMAIL'
+        ? 'Customer does not have an email address'
+        : 'Customer does not have a phone number',
+      400,
+    );
+  }
+
+  const dueDate = new Date();
+  const payload: NotificationPayload = {
+    to: recipient,
+    recipientName: vehicle.customer.name,
+    subject: 'RemindMe custom reminder',
+    message: input.message,
+    serviceType: 'Custom reminder',
+    vehicleReg: vehicle.regNumber,
+    reminderType: input.reminderType,
+    dueDate: dueDate.toISOString().split('T')[0],
+    bookingUrl: `${ENV.CLIENT_URL}/book?reg=${encodeURIComponent(vehicle.regNumber)}`,
+  };
+  const provider = {
+    EMAIL: emailProvider,
+    SMS: smsProvider,
+    WHATSAPP: whatsappProvider,
+  }[input.channel];
+
+  let result;
+  try {
+    result = await provider.send(payload);
+  } catch (error) {
+    result = { success: false, error: error instanceof Error ? error.message : 'Notification provider error' };
+  }
+
+  const reminder = await prisma.reminder.create({
+    data: {
+      vehicleId: input.vehicleId,
+      type: input.reminderType,
+      dueDate,
+      leadDays: 0,
+      channel: input.channel as ReminderChannel,
+      status: result.success ? 'SENT' : 'FAILED',
+      sentAt: result.success ? new Date() : null,
+      errorMessage: result.error || null,
+    },
+  });
+
+  if (!result.success) {
+    throw new AppError(result.error || 'Unable to send reminder', 502);
+  }
+
+  return { id: reminder.id, status: reminder.status, recipient, channel: input.channel };
+}
+
+export async function sendDuePeriodRemindersService(input: { from: string; to: string }) {
+  const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) && new Date(`${value}T00:00:00.000Z`).toISOString().startsWith(value);
+  if (!isDate(input.from) || !isDate(input.to) || input.from > input.to) {
+    throw new AppError('A valid reminder date range is required', 400);
+  }
+  const dueItems = await getDuePeriodService(input.from, input.to);
+  const result = { total: dueItems.length, sent: 0, skipped: 0, failed: 0 };
+
+  for (const item of dueItems) {
+    if (!item.customer_email) {
+      result.skipped++;
+      continue;
+    }
+
+    const label = {
+      SERVICE: 'periodic service',
+      INSURANCE: 'insurance',
+      PUC: 'PUC certificate',
+      WARRANTY: 'vehicle warranty',
+    }[item.due_type];
+    const message = `Dear ${item.customer_name}, your ${item.make} ${item.model} (${item.reg_number}) has a ${label} due on ${item.due_date}. Please contact us to arrange it.`;
+    let status: 'SENT' | 'FAILED' = 'SENT';
+    let errorMessage: string | null = null;
+
+    try {
+      const response = await emailProvider.send({
+        to: item.customer_email,
+        recipientName: item.customer_name,
+        message,
+        serviceType: label,
+        vehicleReg: item.reg_number,
+        reminderType: item.due_type,
+        dueDate: item.due_date,
+        bookingUrl: `${ENV.CLIENT_URL}/book?reg=${encodeURIComponent(item.reg_number)}`,
+      });
+      if (!response.success) {
+        status = 'FAILED';
+        errorMessage = response.error || 'Email error';
+      }
+    } catch (error) {
+      status = 'FAILED';
+      errorMessage = error instanceof Error ? error.message : 'Email provider error';
+    }
+
+    await prisma.reminder.create({
+      data: {
+        vehicleId: item.id,
+        type: item.due_type,
+        dueDate: new Date(`${item.due_date}T00:00:00.000Z`),
+        leadDays: 0,
+        channel: 'EMAIL',
+        status,
+        sentAt: status === 'SENT' ? new Date() : null,
+        errorMessage,
+      },
+    });
+
+    if (status === 'SENT') result.sent++;
+    else result.failed++;
+  }
+
+  return result;
 }

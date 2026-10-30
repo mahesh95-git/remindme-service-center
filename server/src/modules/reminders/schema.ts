@@ -12,3 +12,15 @@ export const getRemindersFilterSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+export const sendManualReminderSchema = z.object({
+  vehicleId: z.number().int().positive(),
+  reminderType: z.enum(['SERVICE', 'INSURANCE', 'PUC', 'WARRANTY']).default('SERVICE'),
+  channel: z.enum(['SMS', 'EMAIL', 'WHATSAPP']).default('EMAIL'),
+  message: z.string().trim().min(1).max(2000),
+});
+
+export const sendDuePeriodRemindersSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});

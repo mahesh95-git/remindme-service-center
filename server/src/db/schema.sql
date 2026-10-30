@@ -1,11 +1,16 @@
 -- Car Service Reminder System - PostgreSQL Schema
 
-DO $$ BEGIN CREATE TYPE "Role" AS ENUM ('ADMIN', 'RECEPTIONIST'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE "Role" AS ENUM ('ADMIN', 'RECEPTIONIST', 'SERVICE', 'DOCUMENTS', 'PUC'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'SERVICE'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'DOCUMENTS'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'PUC'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "ReminderType" AS ENUM ('SERVICE', 'INSURANCE', 'PUC', 'WARRANTY'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "ReminderChannel" AS ENUM ('SMS', 'EMAIL', 'WHATSAPP', 'IN_APP'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "ReminderStatus" AS ENUM ('PENDING', 'SENT', 'FAILED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "BookingStatus" AS ENUM ('CONFIRMED', 'CANCELLED', 'COMPLETED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "PaymentStatus" AS ENUM ('UNPAID', 'PAID'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'CARD', 'UPI', 'BANK_TRANSFER', 'OTHER'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 
 -- Users table (RBAC: ADMIN, RECEPTIONIST)
 CREATE TABLE IF NOT EXISTS users (
@@ -15,9 +20,13 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     role "Role" NOT NULL DEFAULT 'RECEPTIONIST',
     is_active BOOLEAN NOT NULL DEFAULT true,
+    reset_token_hash VARCHAR(64),
+    reset_token_expires_at TIMESTAMP(3),
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP(3) NOT NULL
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(64);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP(3);
 
 -- Customers table
 CREATE TABLE IF NOT EXISTS customers (
@@ -37,7 +46,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     reg_number VARCHAR(50) UNIQUE NOT NULL,
     make VARCHAR(100) NOT NULL,
     model VARCHAR(100) NOT NULL,
-    year INTEGER NOT NULL,
+    year INTEGER,
     purchase_date TIMESTAMP(3),
     insurance_expiry TIMESTAMP(3),
     puc_expiry TIMESTAMP(3),
@@ -48,6 +57,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP(3) NOT NULL
 );
+ALTER TABLE vehicles ALTER COLUMN year DROP NOT NULL;
 
 -- Service History table
 CREATE TABLE IF NOT EXISTS service_history (
@@ -90,6 +100,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     id SERIAL PRIMARY KEY,
     vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
     customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    assigned_staff_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     booking_date TIMESTAMP(3) NOT NULL,
     slot_start TEXT NOT NULL,
     slot_end TEXT NOT NULL,
@@ -101,6 +112,8 @@ CREATE TABLE IF NOT EXISTS bookings (
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP(3) NOT NULL
 );
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS invoice_photo_url TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS assigned_staff_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE bookings ALTER COLUMN service_type SET DEFAULT 'General service';
 
 -- Invoices table
@@ -113,6 +126,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     tax NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     total NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     payment_status "PaymentStatus" NOT NULL DEFAULT 'UNPAID',
+    payment_method "PaymentMethod",
     paid_at TIMESTAMP(3),
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP(3) NOT NULL
@@ -134,6 +148,7 @@ CREATE TABLE IF NOT EXISTS slot_config (
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE SET NULL;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_method "PaymentMethod";
 DO $$
 BEGIN
     IF to_regclass('public.job_cards') IS NOT NULL
@@ -174,7 +189,7 @@ BEGIN
     ELSE
         ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
         UPDATE users SET role = 'RECEPTIONIST', is_active = false WHERE role IN ('MECHANIC', 'STAFF');
-        ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN', 'RECEPTIONIST'));
+        ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN', 'RECEPTIONIST', 'SERVICE', 'DOCUMENTS', 'PUC'));
     END IF;
 END $$;
 

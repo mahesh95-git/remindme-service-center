@@ -8,8 +8,10 @@ export interface AuthUser {
   id: number;
   name: string;
   email: string;
-  role: 'ADMIN' | 'RECEPTIONIST';
+  role: UserRole;
 }
+
+export type UserRole = 'ADMIN' | 'RECEPTIONIST' | 'SERVICE' | 'DOCUMENTS' | 'PUC';
 
 declare global {
   namespace Express {

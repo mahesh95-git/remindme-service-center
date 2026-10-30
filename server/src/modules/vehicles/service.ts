@@ -163,6 +163,7 @@ export async function getVehicleByIdService(id: number) {
       slot_end: booking.slotEnd,
       service_type: booking.serviceType,
       status: booking.status,
+      invoice_photo_url: booking.invoicePhotoUrl,
       invoice: booking.invoice ? {
         id: booking.invoice.id,
         total: Number(booking.invoice.total),
