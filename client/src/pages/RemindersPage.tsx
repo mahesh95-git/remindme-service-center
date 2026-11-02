@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react'
+import { LoaderCircle } from 'lucide-react'
 import { Page, Panel, Status } from '../components/ui'
 import { useRecordsQuery, useRemindersQuery, useRunRemindersMutation, useSendCustomReminderMutation } from '../store/api'
 import { useAppSelector } from '../store/hooks'
@@ -97,7 +98,7 @@ export function RemindersPage() {
           <textarea required minLength={1} maxLength={2000} value={message} onChange={event => setMessage(event.target.value)} rows={3} placeholder="Write the reminder message for the customer..." className="mt-1 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-normal outline-none focus:border-blue-400" />
         </label>
         <div className="flex flex-wrap items-center gap-3 md:col-span-2">
-          <button type="submit" disabled={isSending || !vehicles.length} className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{isSending ? 'Sending…' : 'Send custom reminder'}</button>
+          <button type="submit" disabled={isSending || !vehicles.length} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{isSending && <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />}<span>{isSending ? 'Sending reminder…' : 'Send custom reminder'}</span></button>
           {sendMessage && <p className="text-xs text-emerald-600">{sendMessage}</p>}
           {sendError && <p role="alert" className="text-xs text-rose-600">Unable to send the custom reminder. Check the recipient contact details and try again.</p>}
         </div>

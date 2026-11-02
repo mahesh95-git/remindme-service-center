@@ -116,13 +116,15 @@ export async function createBookingService(input: CreateBookingInput) {
     throw new AppError('Cannot book an appointment for a past date', 400);
   }
 
-  const service = await prisma.service.findFirst({
-    where: { name: input.service_type, isActive: true },
-    select: { id: true },
+  const serviceTypes = Array.isArray(input.service_type) ? input.service_type : [input.service_type];
+  const services = await prisma.service.findMany({
+    where: { name: { in: serviceTypes }, isActive: true },
+    select: { name: true },
   });
-  if (!service) {
+  if (services.length !== new Set(serviceTypes).size) {
     throw new AppError('Selected service is unavailable. Refresh the service list and try again.', 400);
   }
+  const serviceType = serviceTypes.join(', ');
 
   const normalizedReg = normalizeRegNumber(input.reg_number);
   const vehicle = await prisma.vehicle.findUnique({
@@ -175,7 +177,7 @@ export async function createBookingService(input: CreateBookingInput) {
         slotEnd: slotEndClean,
         contactName: input.contact_name.trim(),
         contactPhone: input.contact_phone.trim(),
-        serviceType: input.service_type,
+        serviceType,
         status: 'CONFIRMED',
         bookingCode,
       },

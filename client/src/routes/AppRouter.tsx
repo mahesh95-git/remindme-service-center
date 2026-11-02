@@ -52,7 +52,7 @@ export function AppRouter() {
       <Route path="reminders" element={<RoleGate role={role} allowed={['RECEPTIONIST']}><RemindersPage /></RoleGate>} />
       <Route path="due-services" element={<RoleGate role={role} allowed={['RECEPTIONIST']}><DueServicesPage /></RoleGate>} />
       <Route path="staff" element={<RoleGate role={role} allowed={['ADMIN']}><StaffPage /></RoleGate>} />
-      <Route path="reports" element={<RoleGate role={role} allowed={['ADMIN']}><ReportsPage /></RoleGate>} />
+      <Route path="reports" element={<RoleGate role={role} allowed={['ADMIN', 'RECEPTIONIST']}><ReportsPage /></RoleGate>} />
       <Route path="settings" element={<RoleGate role={role} allowed={['RECEPTIONIST']}><SettingsPage /></RoleGate>} />
       <Route path="*" element={<Page title="Page not found" subtitle="This workspace page is not available." />} />
     </Route>

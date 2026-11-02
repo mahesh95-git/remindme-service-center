@@ -226,7 +226,7 @@ export const api = createApi({
       query: ({ bookingId, ...body }) => ({ url: `/bookings/${bookingId}/schedule`, method: 'PATCH', body }),
       invalidatesTags: ['Bookings'],
     }),
-    createBooking: builder.mutation<Confirmation, Record<string, string>>({
+    createBooking: builder.mutation<Confirmation, Record<string, string | string[]>>({
       query: body => ({ url: '/bookings', method: 'POST', body }),
       invalidatesTags: ['Bookings'],
     }),

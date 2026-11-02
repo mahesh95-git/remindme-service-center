@@ -1,12 +1,15 @@
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, CalendarDays, CarFront, Users } from 'lucide-react'
+import { Activity, ArrowRight, CalendarDays, CarFront, FileSpreadsheet, FileText, Users } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Panel } from '../components/ui'
-import { useDashboardSummaryQuery } from '../store/api'
+import { useBookingsQuery, useDashboardSummaryQuery } from '../store/api'
+import { exportReportPdf, exportReportSpreadsheet } from '../lib/reportExport'
 
 export function DashboardPage() {
   const summaryQuery = useDashboardSummaryQuery()
+  const bookingsQuery = useBookingsQuery()
   const summary = summaryQuery.data
+  const bookings = bookingsQuery.data ?? []
   const stats = summary ? [
     { label: 'Service requests today', value: summary.bookingsToday.total, note: `${summary.bookingsToday.confirmed} confirmed · ${summary.bookingsToday.completed} completed`, icon: CalendarDays, to: '/bookings', color: '#3158e8', border: '#c7d7ff', background: 'linear-gradient(135deg,#e8efff,#fff 78%)' },
     { label: 'Active customers', value: summary.activeCustomers, note: 'Customer profiles', icon: Users, to: '/customers', color: '#d34870', border: '#ffd0dd', background: 'linear-gradient(135deg,#fff0f4,#fff 78%)' },
@@ -14,6 +17,32 @@ export function DashboardPage() {
     { label: 'Services completed', value: summary.servicesCompletedMonth, note: 'This month', icon: Activity, to: '/bookings', color: '#16865e', border: '#bdebd7', background: 'linear-gradient(135deg,#e9fbf3,#fff 78%)' },
   ] : []
   return <div>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 className="text-sm font-bold text-[#262b33]">Service center overview</h2>
+        <p className="mt-1 text-xs text-slate-500">Key metrics and recent performance.</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={!summary}
+          onClick={() => summary && exportReportSpreadsheet({ title: 'Service center overview', summary, bookings })}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+        >
+          <FileSpreadsheet size={14} className="text-emerald-600" />
+          Export CSV
+        </button>
+        <button
+          type="button"
+          disabled={!summary}
+          onClick={() => summary && exportReportPdf({ title: 'Service center overview', summary, bookings })}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+        >
+          <FileText size={14} className="text-blue-600" />
+          Export PDF
+        </button>
+      </div>
+    </div>
     {summaryQuery.isLoading ? <Panel><p className="text-sm text-slate-500">Loading your service overview…</p></Panel> : <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({ label, value, note, icon: Icon, to, color, border, background }) => <Link key={label} to={to} style={{ background, borderColor: border }} className="group rounded-2xl border p-5 shadow-sm shadow-slate-200/40 transition duration-200 hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-300/40"><span className="flex items-start justify-between" style={{ color }}><span className="grid h-10 w-10 place-items-center rounded-xl bg-white/90 shadow-sm"><Icon size={19} /></span><ArrowRight size={15} className="translate-x-1 text-slate-400 opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" /></span><p className="mt-4 text-xs font-semibold text-slate-500">{label}</p><p className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{value}</p><p className="mt-1.5 text-[11px] text-slate-500">{note}</p></Link>)}</div>}
     {summary && <DashboardCharts data={summary.monthlyBookingTrend} />}
   </div>

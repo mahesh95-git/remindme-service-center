@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, CalendarDays, Plus } from 'lucide-react'
+import { Activity, ArrowRight, CalendarDays, FileSpreadsheet, FileText, Plus } from 'lucide-react'
 import { Page, Panel, Status } from '../components/ui'
 import { useBookingsQuery, useDashboardSummaryQuery } from '../store/api'
 import type { Booking } from '../store/api'
+import { exportTodayServicesPdf, exportTodayServicesSpreadsheet } from '../lib/reportExport'
 
 const today = () => {
   const date = new Date()
@@ -19,7 +20,24 @@ export default function ReceptionistDashboardPage() {
   return <Page title="" subtitle="">
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div><h2 className="text-sm font-bold text-[#262b33]">Service overview</h2><p className="mt-1 text-xs text-slate-500">Choose a card to open its workspace.</p></div>
-
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => exportTodayServicesSpreadsheet(todayBookings)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          <FileSpreadsheet size={14} className="text-emerald-600" />
+          Export CSV
+        </button>
+        <button
+          type="button"
+          onClick={() => exportTodayServicesPdf(todayBookings)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          <FileText size={14} className="text-blue-600" />
+          Export PDF
+        </button>
+      </div>
     </div>
 
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

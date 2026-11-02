@@ -1,5 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from 'react'
-import { CalendarDays, CheckCircle2, Clock3, Plus, Search, Upload, X } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Clock3, FileSpreadsheet, FileText, Plus, Search, Upload, X } from 'lucide-react'
+import { exportTodayServicesPdf, exportTodayServicesSpreadsheet } from '../lib/reportExport'
 import { Page, Panel, Status } from '../components/ui'
 import { useBookingsQuery, useCompleteBookingMutation, useInvoiceUploadSignatureMutation, useVehicleDetailQuery } from '../store/api'
 import type { Booking } from '../store/api'
@@ -70,12 +71,30 @@ export function StaffTodayServices({ allowCreate = false }: { allowCreate?: bool
       <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600"><CalendarDays size={15} className="text-blue-600" />{new Date(`${today()}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
       <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-400"><Search size={15} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search customer, vehicle, phone…" className="w-64 max-w-full text-xs text-slate-700 outline-none" /></label>
       <div className="flex-1" />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => exportTodayServicesSpreadsheet(bookings)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          <FileSpreadsheet size={14} className="text-emerald-600" />
+          Export CSV
+        </button>
+        <button
+          type="button"
+          onClick={() => exportTodayServicesPdf(bookings)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          <FileText size={14} className="text-blue-600" />
+          Export PDF
+        </button>
+      </div>
       {allowCreate && <button type="button" onClick={() => { setMessage(''); setCreateOpen(true) }} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><Plus size={15} />Create new service</button>}
     </div>
     {message && !selected && <p role="status" className="mb-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">{message}</p>}
     <Panel>
       <div className="mb-4 flex items-center gap-2"><Clock3 size={17} className="text-blue-600"/><h2 className="text-sm font-extrabold">Today’s appointments <span className="ml-1 text-slate-400">{bookings.length}</span></h2></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead><tr className="border-b text-[10px] uppercase text-slate-400">{['Time', 'Customer', 'Vehicle', 'Service', 'Status'].map(x => <th key={x} className="pb-3 pr-4">{x}</th>)}</tr></thead><tbody>{bookings.map(b => <tr key={b.id} className="border-b last:border-0"><td className="py-3 pr-4 text-xs font-bold">{b.slot_start.slice(0, 5)}</td><td className="pr-4 text-xs"><button type="button" onClick={() => { setSelected(b); setInvoicePhoto(null); setTotalBill(''); setNextServiceDate(''); setMessage('') }} className="text-left font-semibold text-blue-700 hover:underline">{b.customer_name}</button><small className="block text-slate-400">{b.customer_phone}</small></td><td className="pr-4 text-xs">{b.reg_number}<small className="block text-slate-400">{b.make} {b.model}</small></td><td className="pr-4 text-xs">{b.service_type}</td><td className="pr-4"><Status status={b.status === 'COMPLETED' ? 'Completed' : b.status === 'CANCELLED' ? 'Cancelled' : 'Pending'} />{b.status === 'COMPLETED' && <small className="mt-1 block font-semibold text-emerald-700">Invoice paid</small>}</td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead><tr className="border-b text-[10px] uppercase text-slate-400">{['Time', 'Customer', 'Vehicle', 'Service', 'Status'].map(x => <th key={x} className="pb-3 pr-4">{x}</th>)}</tr></thead><tbody>{bookings.map(b => <tr key={b.id} className="border-b last:border-0"><td className="py-3 pr-4 text-xs font-bold">{b.slot_start.slice(0, 5)}</td><td className="pr-4 text-xs"><button type="button" onClick={() => { setSelected(b); setInvoicePhoto(null); setTotalBill(''); setNextServiceDate(''); setMessage('') }} className="text-left font-semibold text-blue-700 hover:underline">{b.customer_name}</button><small className="block text-slate-400">{b.customer_phone}</small></td><td className="pr-4 text-xs">{b.reg_number}<small className="block text-slate-400">{b.make} {b.model}</small></td><td className="pr-4 text-xs">{b.service_type}</td><td className="pr-4"><Status status={b.status === 'COMPLETED' ? 'Completed' : b.status === 'CANCELLED' ? 'Cancelled' : 'Pending'} /></td></tr>)}</tbody></table></div>
       {isFetching && <p className="pt-4 text-xs text-slate-400">Loading today’s services…</p>}{error && <p role="alert" className="pt-4 text-xs text-rose-600">Unable to load today’s services.</p>}{!isFetching && !error && !bookings.length && <p className="pt-4 text-xs text-slate-400">No services are scheduled for today.</p>}
     </Panel>
     {selected && <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/45 p-4" role="dialog" aria-modal="true" aria-labelledby="today-service-title"><Panel className="max-h-[92vh] w-full max-w-3xl overflow-y-auto shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Service appointment</p><h2 id="today-service-title" className="mt-1 text-lg font-extrabold">{selected.booking_code}</h2></div><button type="button" onClick={() => setSelected(null)} aria-label="Close details" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X size={18}/></button></div>

@@ -11,7 +11,10 @@ export const createBookingSchema = z.object({
   contact_name: z.string().min(2),
   contact_phone: z.string().min(7),
   contact_email: z.string().email().optional().or(z.literal('')),
-  service_type: z.string().min(2).default('General service'),
+  service_type: z.union([
+    z.string().min(2),
+    z.array(z.string().min(2)).min(1).max(10),
+  ]).refine(value => (Array.isArray(value) ? value.join(', ') : value).length <= 100, 'Selected services are too long'),
 });
 
 export const updateBookingStatusSchema = z.object({
